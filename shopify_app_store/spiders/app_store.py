@@ -109,7 +109,7 @@ class AppStoreSpider(LastmodSpider):
         description_raw = response.css('#app-details').extract_first()
         description = ' '.join(response.css('#app-details ::text').extract()).strip()
         tagline = None
-        pricing_hint = response.css('#adp-hero > div > div.tw-grow.tw-flex.tw-flex-col.tw-gap-xl > dl > div:nth-child(1) > dd > div.tw-hidden.sm\:tw-block.tw-text-pretty ::text').extract_first().strip()
+        pricing_hint = response.css(r'#adp-hero > div > div.tw-grow.tw-flex.tw-flex-col.tw-gap-xl > dl > div:nth-child(1) > dd > div.tw-hidden.sm\:tw-block.tw-text-pretty ::text').extract_first().strip()
 
         for benefit in response.css('#app-details>ul>li'):
             yield KeyBenefit(app_id=app_id,
