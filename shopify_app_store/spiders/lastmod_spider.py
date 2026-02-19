@@ -34,7 +34,17 @@ class LastmodSpider(scrapy.spiders.SitemapSpider, metaclass=ABCMeta):
                     if any(x.search(entry['loc']) for x in self._follow):
                         yield scrapy.Request(entry['loc'], callback=self._parse_sitemap)
             elif s.type == 'urlset':
-                for entry in it:
+                entries = list(it)
+                # Count total matching app URLs for the Rich UI progress bar
+                matching_count = sum(
+                    1 for entry in entries
+                    if any(r.search(entry['loc']) for r, c in self._cbs)
+                )
+                if not hasattr(self, '_total_counted') and hasattr(self, '_rich_ui'):
+                    self._rich_ui.set_total_apps(matching_count)
+                    self._total_counted = True
+
+                for entry in entries:
                     for r, c in self._cbs:
                         if r.search(entry['loc']):
                             app_url = entry['loc']
@@ -42,8 +52,12 @@ class LastmodSpider(scrapy.spiders.SitemapSpider, metaclass=ABCMeta):
                                 self.logger.info('Skipping app as it hasn\'t changed since %s | URL: %s',
                                                  entry['lastmod'],
                                                  entry['loc'])
+                                # Notify Rich UI about skipped app
+                                if hasattr(self, '_rich_ui'):
+                                    self._rich_ui.notify_skipped()
                                 # Skip apps which were scraped and haven't changed since they were added to the list
                                 continue
 
                             yield scrapy.Request(entry['loc'], callback=c, meta={'lastmod': entry['lastmod']})
                             break
+

@@ -60,6 +60,10 @@ class AppStoreSpider(LastmodSpider):
         for scraped_item in self.parse_app(response):
             yield scraped_item
 
+        # Notify Rich UI dashboard
+        if hasattr(self, '_rich_ui'):
+            self._rich_ui.notify_scraped(app_url)
+
         reviews_url = '{}{}'.format(app_url, '/reviews')
         yield Request(reviews_url, callback=self.parse_reviews, meta={'app_id': app_id, 'lastmod': response.meta['lastmod'], 'skip_if_first_scraped': True})
 
