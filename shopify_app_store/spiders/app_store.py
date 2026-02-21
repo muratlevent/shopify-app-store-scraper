@@ -28,27 +28,44 @@ class AppStoreSpider(LastmodSpider):
     processed_reviews = {}
 
     def start_requests(self):
-        # Fetch existing apps from CSV
-        apps = pd.read_csv('{}{}{}'.format('./', WriteToCSV.OUTPUT_DIR, 'apps.csv'))
-        for _, app in apps.iterrows():
-            self.processed_apps[app['url']] = {'url': app['url'], 'lastmod': app['lastmod'], 'id': app['id']}
+        # Fetch existing apps from CSV (deduplicate on load)
+        try:
+            apps = pd.read_csv('{}{}{}'.format('./', WriteToCSV.OUTPUT_DIR, 'apps.csv'))
+            apps = apps.drop_duplicates(subset=['id'], keep='last')
+            for _, app in apps.iterrows():
+                self.processed_apps[app['url']] = {'url': app['url'], 'lastmod': app['lastmod'], 'id': app['id']}
+            self.logger.info('Loaded %d existing apps from CSV for resume', len(self.processed_apps))
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            self.logger.info('No existing apps.csv found, starting fresh')
 
-        self.processed_reviews = pd.read_csv('{}{}{}'.format('./', WriteToCSV.OUTPUT_DIR, 'reviews.csv'))
+        try:
+            self.processed_reviews = pd.read_csv('{}{}{}'.format('./', WriteToCSV.OUTPUT_DIR, 'reviews.csv'))
+            self.processed_reviews = self.processed_reviews.drop_duplicates(
+                subset=['app_id', 'author', 'posted_at'], keep='last'
+            )
+            self.logger.info('Loaded %d existing reviews from CSV for resume', len(self.processed_reviews))
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            self.processed_reviews = pd.DataFrame(columns=['app_id', 'author', 'rating', 'posted_at', 'body'])
+            self.logger.info('No existing reviews.csv found, starting fresh')
 
         for url in self.sitemap_urls:
             yield Request(url, self._parse_sitemap)
 
     def parse(self, response):
-        app_id = str(uuid.uuid4())
         app_url = response.url
         persisted_app = self.processed_apps.get(app_url, None)
 
         if persisted_app is not None:
+            # Always reuse the existing ID for this app URL
+            app_id = persisted_app.get('id', str(uuid.uuid4()))
             if persisted_app.get('lastmod') != response.meta['lastmod']:
-                self.logger.info('App\'s page got updated since %s, taking the existing id %s | URL: %s',
-                                 persisted_app.get('lastmod'), persisted_app.get('id'), app_url)
-                # Take id of the existing app
-                app_id = persisted_app.get('id', app_id)
+                self.logger.info('App\'s page got updated since %s, reusing id %s | URL: %s',
+                                 persisted_app.get('lastmod'), app_id, app_url)
+            else:
+                self.logger.info('Re-scraping app with same lastmod, reusing id %s | URL: %s',
+                                 app_id, app_url)
+        else:
+            app_id = str(uuid.uuid4())
 
         response.meta['app_id'] = app_id
         self.processed_apps[app_url] = {
